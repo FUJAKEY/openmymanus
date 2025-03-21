@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chat Interface</title>
   <link rel="stylesheet" href="style.css">
+  <!-- Подключаем Marked.js для обработки Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <div class="header">
@@ -22,16 +24,6 @@
 
   <div class="main-content" id="chat-content">
     <!-- Здесь отображаются сообщения чата -->
-  </div>
-
-  <div class="message-bubble" id="bot-message" style="display:none;">
-    <div class="message-icon">
-      <!-- Анимированная иконка для команд terminal -->
-      <div class="code-preview">```<br>def<br>...</div>
-    </div>
-    <div class="check-icon">✓</div>
-    <div class="message-text">Здесь появятся результаты выполнения команд...</div>
-    <div class="expand-icon">∧</div>
   </div>
 
   <div class="input-container">

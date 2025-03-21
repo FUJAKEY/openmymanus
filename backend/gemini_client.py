@@ -2,64 +2,74 @@ import os
 from google import genai
 from google.genai import types
 
-# Подтягиваем ключ из переменных окружения или используем "заглушку"
-API_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyBfnmzemsffBdGoDVFOkSMfwdY9EFxi4EA')
+# Читаем API_KEY из переменных окружения или берём заглушку
+API_KEY = os.environ.get('GEMINI_API_KEY', 'DEMO_KEY')
 client = genai.Client(api_key=API_KEY)
 
-# Добавим инструкции прямо в system_instruction:
+# Глобальная переменная для хранения одного чата
+chat = None
+
+# Инструкции для модели (system_instruction)
 BOT_INSTRUCTIONS = """
 1. Если сообщение содержит команды:
    - terminal(команда)
    - view_file(путь)
    - edit_file(путь)
-   Выполняй соответствующие действия (один раз за генерацию).
+   выполняй соответствующие действия (один раз за генерацию).
    Затем отвечай: 
-   'Команда была выполнена! Содержимое: [результат]. Можете выполнять новые команды, если нужно.'
+   "Команда была выполнена! Содержимое: [результат]. Можете выполнять новые команды, если нужно."
 
-2. При отсутствии команд — просто отвечай пользователю. 
+2. Если команды нет — просто отвечай пользователю. 
 
 3. Используй Markdown для форматирования:
-   - **Жирный текст**
-   - # Заголовки
+   - **жирный текст**
+   - # заголовки
    - ```code``` для кода
 
-4. При ответе в несколько строк учитывай, что \n должны обрабатываться корректно.
+4. Учитывай, что ответ может быть многострочным. Не забывай про корректную обработку \n.
 """
 
-def generate_response(message: str) -> str:
+def get_chat():
     """
-    Обычная (не потоковая) генерация ответа.
+    Возвращает единственный чат-объект, создавая при необходимости.
     """
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-thinking-exp",
-            contents=message,
-            config=types.GenerateContentConfig(
-                max_output_tokens=512,
-                temperature=0.2,
-                system_instruction=BOT_INSTRUCTIONS
-            )
+    global chat
+    if chat is None:
+        chat = client.chats.create(
+            model="gemini-2.0-flash-thinking-exp"
         )
-        return response.text
-    except Exception as e:
-        return f"Ошибка генерации ответа: {str(e)}"
+        # Можно добавить системную инструкцию как первый "system" месседж
+        chat.send_message(role="system", content=BOT_INSTRUCTIONS)
+    return chat
 
-def generate_response_stream(message: str):
+def send_message(message: str) -> str:
+    """
+    Отправка одного сообщения в чат (не потоковая).
+    Возвращает полный ответ от модели (строкой).
+    """
+    c = get_chat()
+    response = c.send_message(message)
+    return response.text
+
+def send_message_stream(message: str):
     """
     Потоковая генерация ответа chunk за chunk.
+    Возвращает генератор, выдающий части текста.
     """
-    try:
-        response_stream = client.models.generate_content_stream(
-            model="gemini-2.0-flash-thinking-exp",
-            contents=[message],
-            config=types.GenerateContentConfig(
-                max_output_tokens=512,
-                temperature=0.2,
-                system_instruction=BOT_INSTRUCTIONS
-            )
-        )
-        for chunk in response_stream:
-            # chunk.text — это часть ответа
-            yield chunk.text
-    except Exception as e:
-        yield f"Ошибка генерации ответа: {str(e)}"
+    c = get_chat()
+    response_stream = c.send_message_stream(message)
+    for chunk in response_stream:
+        yield chunk.text
+
+def get_chat_history():
+    """
+    Возвращает историю сообщений (role, content).
+    """
+    c = get_chat()
+    history_list = []
+    for msg in c.get_history():
+        history_list.append({
+            "role": msg.role,
+            "content": msg.parts[0].text if msg.parts else ""
+        })
+    return history_list

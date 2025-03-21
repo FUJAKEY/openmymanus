@@ -17,22 +17,26 @@ document.addEventListener('DOMContentLoaded', function() {
   function appendMessage(sender, text) {
     const messageBubble = document.createElement('div');
     messageBubble.classList.add('message-bubble');
+    let renderedText = marked.parse(text); // Обработка Markdown
+    // Замена символов перевода строки на <br>
+    renderedText = renderedText.replace(/\n/g, '<br>');
+    
     if (sender === 'bot') {
       messageBubble.innerHTML = `
         <div class="message-icon terminal-animation">
-          <div class="code-preview highlight">${text.slice(0, 20)}...</div>
+          <div class="code-preview highlight">${renderedText.slice(0, 20)}...</div>
         </div>
-        <div class="message-text">${text}</div>
+        <div class="message-text">${renderedText}</div>
       `;
     } else {
-      messageBubble.innerHTML = `<div class="message-text">${text}</div>`;
+      messageBubble.innerHTML = `<div class="message-text">${renderedText}</div>`;
     }
     chatContent.appendChild(messageBubble);
     chatContent.scrollTop = chatContent.scrollHeight;
   }
 
   function processMessage(message) {
-    // Распознаем команды: terminal(...), view_file(...), edit_file(...)
+    // Определяем тип команды
     const terminalMatch = message.match(/^terminal\((.+)\)$/);
     const viewFileMatch = message.match(/^view_file\((.+)\)$/);
     const editFileMatch = message.match(/^edit_file\((.+)\)$/);
@@ -40,40 +44,67 @@ document.addEventListener('DOMContentLoaded', function() {
     if (terminalMatch && !commandInProgress) {
       commandInProgress = true;
       const command = terminalMatch[1];
-      // Имитация выполнения команды в терминале
-      setTimeout(() => {
-        const output = `Выполнена команда: ${command}`;
-        appendMessage('bot', `Команда была выполнена! Содержимое: ${output}`);
-        commandInProgress = false;
-      }, 1000);
-    } else if (viewFileMatch && !commandInProgress) {
-      commandInProgress = true;
-      const filePath = viewFileMatch[1];
-      // Имитация чтения файла
-      setTimeout(() => {
-        const fileContent = `Содержимое файла ${filePath}`;
-        appendMessage('bot', `Команда была выполнена! Содержимое: ${fileContent}`);
-        commandInProgress = false;
-      }, 1000);
-    } else if (editFileMatch && !commandInProgress) {
-      commandInProgress = true;
-      const filePath = editFileMatch[1];
-      // Имитация редактирования файла
-      setTimeout(() => {
-        const newContent = `Новый контент файла ${filePath}`;
-        appendMessage('bot', `Команда была выполнена! Содержимое: ${newContent}`);
-        commandInProgress = false;
-      }, 1000);
-    } else {
-      // Если сообщение не является специальной командой – отправляем его на сервер для ИИ-генерации
-      fetch('/process', {
+      // Отправляем команду на выполнение на сервере
+      fetch('/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: message })
+        body: JSON.stringify({ type: 'terminal', argument: command })
       })
       .then(response => response.json())
       .then(data => {
         appendMessage('bot', data.response);
+        commandInProgress = false;
+      })
+      .catch(err => {
+        appendMessage('bot', 'Ошибка при выполнении команды.');
+        commandInProgress = false;
+      });
+    } else if (viewFileMatch && !commandInProgress) {
+      commandInProgress = true;
+      const filePath = viewFileMatch[1];
+      fetch('/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'view_file', argument: filePath })
+      })
+      .then(response => response.json())
+      .then(data => {
+        appendMessage('bot', data.response);
+        commandInProgress = false;
+      })
+      .catch(err => {
+        appendMessage('bot', 'Ошибка при выполнении команды.');
+        commandInProgress = false;
+      });
+    } else if (editFileMatch && !commandInProgress) {
+      commandInProgress = true;
+      const filePath = editFileMatch[1];
+      // Ожидается, что новая информация уже включена в команду, здесь для примера используется фиксированный текст
+      const newContent = "Новый контент файла, обновлён через команду.";
+      fetch('/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'edit_file', argument: filePath, new_content: newContent })
+      })
+      .then(response => response.json())
+      .then(data => {
+        appendMessage('bot', data.response);
+        commandInProgress = false;
+      })
+      .catch(err => {
+        appendMessage('bot', 'Ошибка при выполнении команды.');
+        commandInProgress = false;
+      });
+    } else {
+      // Если сообщение не содержит специальной команды – обрабатываем через потоковую генерацию
+      fetch('/process_stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message })
+      })
+      .then(response => response.text())
+      .then(data => {
+        appendMessage('bot', data);
       })
       .catch(err => {
         appendMessage('bot', 'Ошибка при обработке запроса.');

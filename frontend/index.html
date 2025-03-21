@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Chat Interface</title>
-  <link rel="stylesheet" href="style.css">
-  <!-- Подключаем Marked.js для обработки Markdown -->
+  <link rel="stylesheet" href="style.css" />
+  <!-- Marked.js для рендеринга Markdown -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
@@ -23,14 +23,19 @@
   </div>
 
   <div class="main-content" id="chat-content">
-    <!-- Здесь отображаются сообщения чата -->
+    <!-- Сообщения чата будут динамически добавляться сюда -->
   </div>
 
   <div class="input-container">
     <button class="attachment-btn">
       <span class="clip-icon">⌇</span>
     </button>
-    <input type="text" class="input-field" placeholder="Message Manus" id="chat-input">
+    <input
+      type="text"
+      class="input-field"
+      placeholder="Message Manus"
+      id="chat-input"
+    />
     <div class="send-btn" id="send-btn">
       <span class="send-icon">↑</span>
     </div>

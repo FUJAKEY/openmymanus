@@ -2,14 +2,13 @@ import os
 from google import genai
 from google.genai import types
 
-# Читаем API_KEY из переменных окружения или берём заглушку
 API_KEY = os.environ.get('GEMINI_API_KEY', 'DEMO_KEY')
 client = genai.Client(api_key=API_KEY)
 
-# Глобальная переменная для хранения одного чата
+# Глобальный объект чата
 chat = None
 
-# Инструкции для модели (system_instruction)
+# Системные инструкции, которые должны действовать для всей сессии
 BOT_INSTRUCTIONS = """
 1. Если сообщение содержит команды:
    - terminal(команда)
@@ -31,21 +30,20 @@ BOT_INSTRUCTIONS = """
 
 def get_chat():
     """
-    Возвращает единственный чат-объект, создавая при необходимости.
+    Возвращает единый объект чата (singleton). Если не создан, создаём его.
     """
     global chat
     if chat is None:
+        # Передаём system_instruction при создании
         chat = client.chats.create(
-            model="gemini-2.0-flash-thinking-exp"
+            model="gemini-2.0-flash-thinking-exp",
+            system_instruction=BOT_INSTRUCTIONS
         )
-        # Можно добавить системную инструкцию как первый "system" месседж
-        chat.send_message(role="system", content=BOT_INSTRUCTIONS)
     return chat
 
 def send_message(message: str) -> str:
     """
-    Отправка одного сообщения в чат (не потоковая).
-    Возвращает полный ответ от модели (строкой).
+    Отправка сообщения в чат (не потоковая).
     """
     c = get_chat()
     response = c.send_message(message)
@@ -53,8 +51,7 @@ def send_message(message: str) -> str:
 
 def send_message_stream(message: str):
     """
-    Потоковая генерация ответа chunk за chunk.
-    Возвращает генератор, выдающий части текста.
+    Потоковая отправка сообщения в чат (частями).
     """
     c = get_chat()
     response_stream = c.send_message_stream(message)
@@ -63,7 +60,7 @@ def send_message_stream(message: str):
 
 def get_chat_history():
     """
-    Возвращает историю сообщений (role, content).
+    Возвращает историю сообщений в виде списка {role, content}.
     """
     c = get_chat()
     history_list = []

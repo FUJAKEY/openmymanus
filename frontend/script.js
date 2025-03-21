@@ -2,9 +2,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const inputField = document.getElementById('chat-input');
   const sendBtn = document.getElementById('send-btn');
   const chatContent = document.getElementById('chat-content');
+  const showHistoryBtn = document.getElementById('show-history-btn');
 
-  // Флаг, чтобы не выполнять сразу несколько команд
-  let commandInProgress = false;
+  // При нажатии на кнопку "Show history" загружаем историю
+  showHistoryBtn.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/history');
+      const historyData = await res.json();
+      // Очищаем текущее окно чата и загружаем все сообщения
+      chatContent.innerHTML = '';
+      historyData.forEach(msg => {
+        // msg.role = user / assistant / system
+        appendMessage(msg.role === 'user' ? 'user' : 'bot', msg.content);
+      });
+    } catch (err) {
+      console.error('Ошибка при загрузке истории:', err);
+    }
+  });
 
   sendBtn.addEventListener('click', () => {
     const message = inputField.value.trim();
@@ -14,158 +28,183 @@ document.addEventListener('DOMContentLoaded', () => {
     processMessage(message);
   });
 
-  function appendMessage(sender, rawText) {
+  /**
+   * Создает bubble в чате.
+   * @param {string} sender - 'user', 'bot', 'bot-command', 'system'
+   * @param {string} rawText
+   * @returns {HTMLElement} - сам bubble
+   */
+  function createMessageBubble(sender, rawText) {
     const messageBubble = document.createElement('div');
     messageBubble.classList.add('message-bubble');
 
-    // Обрабатываем Markdown:
-    let rendered = marked.parse(rawText);
-    // Вставляем контент
+    let rendered = marked.parse(rawText); // Преобразуем Markdown
+
     if (sender === 'bot-command') {
-      // Показ отдельного стиля для "Executing command"
+      // Вывод "Executing command" с анимацией
       messageBubble.innerHTML = `
         <div class="message-icon terminal-animation">
-          <div class="code-preview highlight">CMD</div>
+          <div class="code-preview">CMD</div>
         </div>
         <div class="message-text"><strong>Executing command:</strong> ${rendered}</div>
       `;
     } else if (sender === 'bot') {
-      // Ответ от бота
+      // Ответ от бота (или потоковая часть)
+      // Для потоковой генерации будем обновлять содержимое .message-text
       messageBubble.innerHTML = `
         <div class="message-icon terminal-animation">
-          <div class="code-preview highlight">${rawText.slice(0, 20)}...</div>
+          <div class="code-preview">${rawText.slice(0, 20)}...</div>
         </div>
         <div class="message-text">${rendered}</div>
       `;
-    } else {
+    } else if (sender === 'user') {
       // Сообщение от пользователя
       messageBubble.innerHTML = `<div class="message-text">${rendered}</div>`;
+    } else {
+      // system / прочие
+      messageBubble.innerHTML = `<div class="message-text">${rendered}</div>`;
     }
-
-    chatContent.appendChild(messageBubble);
-    chatContent.scrollTop = chatContent.scrollHeight;
+    return messageBubble;
   }
 
-  function processMessage(message) {
-    // Регулярки для команд
+  /**
+   * Добавляет bubble в чат
+   */
+  function appendMessage(sender, text) {
+    const bubble = createMessageBubble(sender, text);
+    chatContent.appendChild(bubble);
+    chatContent.scrollTop = chatContent.scrollHeight;
+    return bubble;
+  }
+
+  /**
+   * Обработка сообщения: проверка на команды или вызов потоковой генерации
+   */
+  async function processMessage(message) {
+    // Ищем команды
     const terminalMatch = message.match(/^terminal\((.+)\)$/);
     const viewFileMatch = message.match(/^view_file\((.+)\)$/);
     const editFileMatch = message.match(/^edit_file\((.+)\)$/);
 
-    // Если находим соответствие и команда не в процессе
-    if (terminalMatch && !commandInProgress) {
-      commandInProgress = true;
+    if (terminalMatch) {
       const cmd = terminalMatch[1];
-      appendMessage('bot-command', cmd); // "Executing command"
+      appendMessage('bot-command', cmd);
 
-      fetch('/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'terminal', argument: cmd })
-      })
-      .then(res => res.json())
-      .then(data => {
-        appendMessage('bot', data.response);
-        commandInProgress = false;
-      })
-      .catch(err => {
+      // Выполняем команду на сервере
+      try {
+        const res = await fetch('/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'terminal', argument: cmd })
+        });
+        const data = await res.json();
+        if (data.error) {
+          appendMessage('bot', `**Ошибка:** ${data.error}`);
+        } else {
+          // Здесь мы сами отправляем "Команда была выполнена! ..." от лица пользователя
+          const userMsg = `Команда была выполнена! Содержимое:\n\`\`\`\n${data.result}\n\`\`\`\nМожете выполнять новые команды, если нужно.`;
+          appendMessage('user', userMsg);
+          // Теперь пусть модель ответит потоково на это
+          streamChatResponse(userMsg);
+        }
+      } catch (err) {
         appendMessage('bot', `Ошибка при выполнении terminal: ${err}`);
-        commandInProgress = false;
-      });
+      }
 
-    } else if (viewFileMatch && !commandInProgress) {
-      commandInProgress = true;
+    } else if (viewFileMatch) {
       const filePath = viewFileMatch[1];
       appendMessage('bot-command', `view_file ${filePath}`);
 
-      fetch('/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'view_file', argument: filePath })
-      })
-      .then(res => res.json())
-      .then(data => {
-        appendMessage('bot', data.response);
-        commandInProgress = false;
-      })
-      .catch(err => {
+      try {
+        const res = await fetch('/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'view_file', argument: filePath })
+        });
+        const data = await res.json();
+        if (data.error) {
+          appendMessage('bot', `**Ошибка:** ${data.error}`);
+        } else {
+          const userMsg = `Команда была выполнена! Содержимое файла \`${filePath}\`:\n\`\`\`\n${data.result}\n\`\`\`\nМожете выполнять новые команды, если нужно.`;
+          appendMessage('user', userMsg);
+          streamChatResponse(userMsg);
+        }
+      } catch (err) {
         appendMessage('bot', `Ошибка при выполнении view_file: ${err}`);
-        commandInProgress = false;
-      });
+      }
 
-    } else if (editFileMatch && !commandInProgress) {
-      commandInProgress = true;
-      // Например, edit_file(path|новое_содержимое)
-      // Но здесь для упрощения ищем только путь
-      // В реальном проекте можно парсить подробнее
+    } else if (editFileMatch) {
       const filePath = editFileMatch[1];
       appendMessage('bot-command', `edit_file ${filePath}`);
 
-      // Пример нового содержимого
-      const newContent = "Новый контент файла, записанный через edit_file()";
+      // Здесь можно расширить синтаксис, чтобы извлечь новый контент
+      // Пока что берём жёстко зашитый пример
+      const newContent = "Новый контент файла, записанный через edit_file().";
 
-      fetch('/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'edit_file',
-          argument: filePath,
-          new_content: newContent
-        })
-      })
-      .then(res => res.json())
-      .then(data => {
-        appendMessage('bot', data.response);
-        commandInProgress = false;
-      })
-      .catch(err => {
+      try {
+        const res = await fetch('/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'edit_file',
+            argument: filePath,
+            new_content: newContent
+          })
+        });
+        const data = await res.json();
+        if (data.error) {
+          appendMessage('bot', `**Ошибка:** ${data.error}`);
+        } else {
+          const userMsg = `Команда была выполнена! Содержимое:\n\`\`\`\n${data.result}\n\`\`\`\nМожете выполнять новые команды, если нужно.`;
+          appendMessage('user', userMsg);
+          streamChatResponse(userMsg);
+        }
+      } catch (err) {
         appendMessage('bot', `Ошибка при выполнении edit_file: ${err}`);
-        commandInProgress = false;
-      });
+      }
 
     } else {
-      // Если это НЕ специальная команда, запускаем потоковую генерацию
+      // Обычный текст => потоковая генерация
       streamChatResponse(message);
     }
   }
 
   /**
-   * Запрос к /process_stream и пошаговое чтение ответа
+   * Потоковая генерация ответа: постепенно дополняем последний бот-bubble
    */
   function streamChatResponse(userMessage) {
-    // Создаем fetch с body=message
+    // Создаём новый bubble для бота, пока пустой
+    const botBubble = appendMessage('bot', '');
+
     fetch('/process_stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: userMessage })
     })
     .then(response => {
-      // Работаем напрямую с потоком тела ответа
+      if (!response.body) {
+        throw new Error('ReadableStream not yet supported in this browser.');
+      }
       const reader = response.body.getReader();
-      let partialText = '';
+      let accumulated = '';
 
       function readChunk() {
         reader.read().then(({ done, value }) => {
           if (done) {
-            // Когда поток закончился — финальное добавление
-            if (partialText) {
-              appendMessage('bot', partialText);
-            }
             return;
           }
-          // Декодируем chunk
           const chunkText = new TextDecoder('utf-8').decode(value);
-          partialText += chunkText;
-          // Можно в реальном времени обновлять одно сообщение:
-          // Но для упрощения будем собирать весь ответ в partialText,
-          // а потом добавим целиком.
+          accumulated += chunkText;
+          // Обновляем содержимое bubble в реальном времени
+          botBubble.querySelector('.message-text').innerHTML = marked.parse(accumulated);
+          chatContent.scrollTop = chatContent.scrollHeight;
           readChunk();
         });
       }
       readChunk();
     })
     .catch(err => {
-      appendMessage('bot', `Ошибка при потоковой генерации: ${err}`);
+      botBubble.querySelector('.message-text').innerHTML = `Ошибка при потоковой генерации: ${err}`;
     });
   }
 });

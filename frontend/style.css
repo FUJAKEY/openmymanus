@@ -69,6 +69,7 @@ body {
   padding: 10px 15px;
   display: flex;
   align-items: center;
+  white-space: pre-wrap;
 }
 
 .message-icon {
@@ -99,6 +100,7 @@ body {
   flex: 1;
   color: #ffffff;
   font-size: 16px;
+  word-wrap: break-word;
 }
 
 .expand-icon {
@@ -152,6 +154,7 @@ body {
   justify-content: center;
   align-items: center;
   margin-right: 5px;
+  cursor: pointer;
 }
 
 .send-icon {
@@ -159,22 +162,34 @@ body {
   font-size: 18px;
 }
 
-/* Анимация для иконки терминала */
+/* Анимация пульсации иконки для "Executing command" */
 .terminal-animation {
   animation: pulse 1s infinite;
 }
 
 @keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.1); }
   100% { transform: scale(1); }
 }
 
-/* Стили для синтаксической подсветки */
-.highlight {
+/* Пример стилей для Markdown */
+.message-text code {
   background-color: #333;
-  padding: 5px;
+  padding: 2px 4px;
   border-radius: 4px;
   font-family: monospace;
-  color: #62a0ea;
+}
+.message-text pre {
+  background-color: #333;
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.message-text h1, .message-text h2, .message-text h3 {
+  color: #fff;
+  margin: 0.5em 0;
+}
+.message-text strong {
+  font-weight: bold;
 }

@@ -1,96 +1,56 @@
 import os
-import subprocess
-from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
-from backend.gemini_client import (
-    send_message,
-    send_message_stream,
-    get_chat_history
-)
+from google import genai
+from google.genai import types
 
-app = Flask(__name__, static_folder='../frontend', static_url_path='')
+API_KEY = os.environ.get('GEMINI_API_KEY', 'DEMO_KEY')
+client = genai.Client(api_key=API_KEY)
 
-@app.route('/')
-def index():
-    return send_from_directory('../frontend', 'index.html')
+chat = None
 
-@app.route('/history', methods=['GET'])
-def history():
-    history_data = get_chat_history()
-    return jsonify(history_data)
+BOT_INSTRUCTIONS = """
+1. Если сообщение содержит команды:
+   - terminal(команда)
+   - view_file(путь)
+   - edit_file(путь)
+   выполняй соответствующие действия (один раз за генерацию).
+   Затем отвечай: 
+   "Команда была выполнена! Содержимое: [результат]. Можете выполнять новые команды, если нужно."
 
-@app.route('/process', methods=['POST'])
-def process():
-    data = request.get_json()
-    message = data.get('message', '')
-    response_text = send_message(message)
-    return jsonify({'response': response_text})
+2. Если команды нет — просто отвечай пользователю.
 
-@app.route('/process_stream', methods=['POST'])
-def process_stream():
-    data = request.get_json()
-    message = data.get('message', '')
+3. Используй Markdown для форматирования:
+   - **жирный текст**
+   - # заголовки
+   - ```code``` для кода
 
-    @stream_with_context
-    def generate():
-        try:
-            for chunk in send_message_stream(message):
-                yield chunk
-        except Exception as e:
-            yield f"\n[Ошибка генерации ответа: {str(e)}]"
+4. Учитывай, что ответ может быть многострочным. Не забывай про корректную обработку \n.
+"""
 
-    return Response(generate(), mimetype='text/plain')
+def get_chat():
+    global chat
+    if chat is None:
+        chat = client.chats.create(model="gemini-2.0-flash-thinking-exp")
+        # Передаём инструкции через первое сообщение
+        chat.send_message(BOT_INSTRUCTIONS)
+    return chat
 
-@app.route('/execute', methods=['POST'])
-def execute():
-    """
-    Выполнение реальных команд на сервере внутри рабочей директории "project_workspace".
-    Например, команда terminal(mkdir какаха) создаст папку "какаха" в этой директории.
-    """
-    data = request.get_json()
-    command_type = data.get('type', '')
-    argument = data.get('argument', '')
+def send_message(message: str) -> str:
+    c = get_chat()
+    response = c.send_message(message)
+    return response.text
 
-    # Определяем рабочую директорию для выполнения команд
-    workspace = os.path.join(os.getcwd(), 'project_workspace')
-    if not os.path.exists(workspace):
-        os.makedirs(workspace)
+def send_message_stream(message: str):
+    c = get_chat()
+    response_stream = c.send_message_stream(message)
+    for chunk in response_stream:
+        yield chunk.text
 
-    if command_type == 'terminal':
-        try:
-            result = subprocess.run(
-                argument,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=workspace
-            )
-            output = result.stdout + result.stderr
-            return jsonify({'result': output})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 400
-
-    elif command_type == 'view_file':
-        try:
-            filepath = os.path.join(workspace, argument)
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return jsonify({'result': content})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 400
-
-    elif command_type == 'edit_file':
-        new_content = data.get('new_content', '')
-        try:
-            filepath = os.path.join(workspace, argument)
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(new_content)
-            return jsonify({'result': f"Файл '{argument}' обновлён успешно."})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 400
-
-    else:
-        return jsonify({'error': "Неверный тип команды."}), 400
-
-if __name__ == '__main__':
-    app.run(debug=True)
+def get_chat_history():
+    c = get_chat()
+    history_list = []
+    for msg in c.get_history():
+        history_list.append({
+            "role": msg.role,
+            "content": msg.parts[0].text if msg.parts else ""
+        })
+    return history_list

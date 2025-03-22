@@ -5,6 +5,11 @@ from backend.gemini_client import send_message, send_message_stream, get_chat_hi
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
 
+# Рабочая директория для выполнения команд – /content/run
+WORKSPACE = "/content/run"
+if not os.path.exists(WORKSPACE):
+    os.makedirs(WORKSPACE)
+
 @app.route('/')
 def index():
     return send_from_directory('../frontend', 'index.html')
@@ -33,22 +38,16 @@ def process_stream():
                 yield chunk
         except Exception as e:
             yield f"\n[Ошибка генерации ответа: {str(e)}]"
-
     return Response(generate(), mimetype='text/plain')
 
 @app.route('/execute', methods=['POST'])
 def execute():
     """
-    Этот endpoint оставлен для обратной совместимости, если потребуется выполнить команду напрямую.
-    Но основная обработка команд теперь происходит в gemini_client.py при генерации ответа.
+    Выполнение реальных команд в рабочей директории WORKSPACE (/content/run).
     """
     data = request.get_json()
     command_type = data.get('type', '')
     argument = data.get('argument', '')
-
-    workspace = os.path.join(os.getcwd(), 'project_workspace')
-    if not os.path.exists(workspace):
-        os.makedirs(workspace)
 
     if command_type == 'terminal':
         try:
@@ -58,29 +57,32 @@ def execute():
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                cwd=workspace
+                cwd=WORKSPACE
             )
             output = result.stdout + result.stderr
             return jsonify({'result': output})
         except Exception as e:
             return jsonify({'error': str(e)}), 400
+
     elif command_type == 'view_file':
         try:
-            filepath = os.path.join(workspace, argument)
+            filepath = os.path.join(WORKSPACE, argument)
             with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
             return jsonify({'result': content})
         except Exception as e:
             return jsonify({'error': str(e)}), 400
+
     elif command_type == 'edit_file':
         new_content = data.get('new_content', '')
         try:
-            filepath = os.path.join(workspace, argument)
+            filepath = os.path.join(WORKSPACE, argument)
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(new_content)
             return jsonify({'result': f"Файл '{argument}' обновлён успешно."})
         except Exception as e:
             return jsonify({'error': str(e)}), 400
+
     else:
         return jsonify({'error': "Неверный тип команды."}), 400
 

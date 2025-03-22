@@ -39,14 +39,13 @@ def process_stream():
 @app.route('/execute', methods=['POST'])
 def execute():
     """
-    Выполнение реальных команд на сервере внутри рабочей директории "project_workspace".
-    Например, команда terminal(mkdir какаха) создаст папку "какаха" в этой директории.
+    Этот endpoint оставлен для обратной совместимости, если потребуется выполнить команду напрямую.
+    Но основная обработка команд теперь происходит в gemini_client.py при генерации ответа.
     """
     data = request.get_json()
     command_type = data.get('type', '')
     argument = data.get('argument', '')
 
-    # Определяем рабочую директорию для выполнения команд
     workspace = os.path.join(os.getcwd(), 'project_workspace')
     if not os.path.exists(workspace):
         os.makedirs(workspace)
@@ -65,7 +64,6 @@ def execute():
             return jsonify({'result': output})
         except Exception as e:
             return jsonify({'error': str(e)}), 400
-
     elif command_type == 'view_file':
         try:
             filepath = os.path.join(workspace, argument)
@@ -74,7 +72,6 @@ def execute():
             return jsonify({'result': content})
         except Exception as e:
             return jsonify({'error': str(e)}), 400
-
     elif command_type == 'edit_file':
         new_content = data.get('new_content', '')
         try:
@@ -84,7 +81,6 @@ def execute():
             return jsonify({'result': f"Файл '{argument}' обновлён успешно."})
         except Exception as e:
             return jsonify({'error': str(e)}), 400
-
     else:
         return jsonify({'error': "Неверный тип команды."}), 400
 

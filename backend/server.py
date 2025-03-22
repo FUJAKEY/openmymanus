@@ -1,10 +1,7 @@
+import os
 import subprocess
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
-from backend.gemini_client import (
-    send_message,
-    send_message_stream,
-    get_chat_history
-)
+from backend.gemini_client import send_message, send_message_stream, get_chat_history
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
 
@@ -14,17 +11,11 @@ def index():
 
 @app.route('/history', methods=['GET'])
 def history():
-    """
-    Возвращаем полную историю чата в JSON.
-    """
     history_data = get_chat_history()
     return jsonify(history_data)
 
 @app.route('/process', methods=['POST'])
 def process():
-    """
-    Пример НЕпотоковой генерации (для отладки).
-    """
     data = request.get_json()
     message = data.get('message', '')
     response_text = send_message(message)
@@ -32,9 +23,6 @@ def process():
 
 @app.route('/process_stream', methods=['POST'])
 def process_stream():
-    """
-    Потоковая генерация ответа.
-    """
     data = request.get_json()
     message = data.get('message', '')
 
@@ -51,21 +39,28 @@ def process_stream():
 @app.route('/execute', methods=['POST'])
 def execute():
     """
-    Выполнение реальных команд на сервере:
-      - type='terminal', argument='команда'
-      - type='view_file', argument='путь'
-      - type='edit_file', argument='путь', new_content='...'
-    Возвращаем только результат (без ответа от бота).
-    Фронтенд потом отправит отдельное сообщение "Команда была выполнена!..."
-    в модель, чтобы она продолжила диалог.
+    Выполнение реальных команд на сервере внутри рабочей директории "project_workspace".
+    Например, команда terminal(mkdir какаха) создаст папку "какаха" в этой директории.
     """
     data = request.get_json()
     command_type = data.get('type', '')
     argument = data.get('argument', '')
 
+    # Определяем рабочую директорию для выполнения команд
+    workspace = os.path.join(os.getcwd(), 'project_workspace')
+    if not os.path.exists(workspace):
+        os.makedirs(workspace)
+
     if command_type == 'terminal':
         try:
-            result = subprocess.run(argument, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            result = subprocess.run(
+                argument,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=workspace
+            )
             output = result.stdout + result.stderr
             return jsonify({'result': output})
         except Exception as e:
@@ -73,7 +68,8 @@ def execute():
 
     elif command_type == 'view_file':
         try:
-            with open(argument, 'r', encoding='utf-8') as f:
+            filepath = os.path.join(workspace, argument)
+            with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
             return jsonify({'result': content})
         except Exception as e:
@@ -82,7 +78,8 @@ def execute():
     elif command_type == 'edit_file':
         new_content = data.get('new_content', '')
         try:
-            with open(argument, 'w', encoding='utf-8') as f:
+            filepath = os.path.join(workspace, argument)
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(new_content)
             return jsonify({'result': f"Файл '{argument}' обновлён успешно."})
         except Exception as e:

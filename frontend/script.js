@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const chatContent = document.getElementById('chat-content');
   const showHistoryBtn = document.getElementById('show-history-btn');
 
-  // Загружаем историю чата по нажатию на кнопку истории
   showHistoryBtn.addEventListener('click', async () => {
     try {
       const res = await fetch('/history');
@@ -29,17 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
     processMessage(message);
   });
 
-  /**
-   * Создает bubble сообщения.
-   * @param {string} sender - 'user', 'bot', 'bot-command'
-   * @param {string} rawText 
-   * @returns {HTMLElement}
-   */
   function createMessageBubble(sender, rawText) {
     const messageBubble = document.createElement('div');
     messageBubble.classList.add('message-bubble');
-
-    let rendered = marked.parse(rawText); // рендеринг Markdown с переносами строк включенными
+    let rendered = marked.parse(rawText);
 
     if (sender === 'bot-command') {
       messageBubble.innerHTML = `
@@ -61,9 +53,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return messageBubble;
   }
 
-  /**
-   * Добавляет сообщение в чат.
-   */
   function appendMessage(sender, text) {
     const bubble = createMessageBubble(sender, text);
     chatContent.appendChild(bubble);
@@ -71,19 +60,15 @@ document.addEventListener('DOMContentLoaded', () => {
     return bubble;
   }
 
-  /**
-   * Обрабатывает сообщение, проверяя, является ли оно специальной командой.
-   */
   async function processMessage(message) {
-    // Ищем команды с помощью регулярных выражений
+    // Ищем команды
     const terminalMatch = message.match(/^terminal(.+)$/);
     const viewFileMatch = message.match(/^view_file(.+)$/);
     const editFileMatch = message.match(/^edit_file(.+)$/);
 
     if (terminalMatch) {
       const cmd = terminalMatch[1];
-      appendMessage('bot-command', cmd);
-
+      // Не показываем промежуточный bubble пользователю.
       try {
         const res = await fetch('/execute', {
           method: 'POST',
@@ -94,17 +79,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.error) {
           appendMessage('bot', `**Ошибка:** ${data.error}`);
         } else {
-          // Передаем результат выполнения команды в модель для генерации финального ответа
+          // Отправляем результат выполнения команды в модель,
+          // но не отображаем это сообщение напрямую пользователю.
           streamChatResponse(`Команда была выполнена! Содержимое:\n\`\`\`\n${data.result}\n\`\`\``);
         }
       } catch (err) {
         appendMessage('bot', `Ошибка при выполнении terminal: ${err}`);
       }
-
     } else if (viewFileMatch) {
       const filePath = viewFileMatch[1];
-      appendMessage('bot-command', `view_file ${filePath}`);
-
       try {
         const res = await fetch('/execute', {
           method: 'POST',
@@ -120,14 +103,10 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         appendMessage('bot', `Ошибка при выполнении view_file: ${err}`);
       }
-
     } else if (editFileMatch) {
       const filePath = editFileMatch[1];
-      appendMessage('bot-command', `edit_file ${filePath}`);
-
       // Пример нового содержимого для редактирования
       const newContent = "Новый контент файла, записанный через edit_file().";
-
       try {
         const res = await fetch('/execute', {
           method: 'POST',
@@ -147,19 +126,12 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         appendMessage('bot', `Ошибка при выполнении edit_file: ${err}`);
       }
-
     } else {
-      // Если сообщение не является специальной командой, запускаем потоковую генерацию
       streamChatResponse(message);
     }
   }
 
-  /**
-   * Потоковая генерация ответа от модели.
-   * Создает новый bot-bubble и постепенно дописывает текст.
-   */
   function streamChatResponse(messageText) {
-    // Создаем пустой bot-bubble
     const botBubble = appendMessage('bot', '');
     fetch('/process_stream', {
       method: 'POST',

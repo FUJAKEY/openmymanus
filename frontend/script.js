@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Включаем поддержку переносов строк в Marked.js
+  marked.setOptions({ breaks: true });
+
   const inputField = document.getElementById('chat-input');
   const sendBtn = document.getElementById('send-btn');
   const chatContent = document.getElementById('chat-content');
@@ -36,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageBubble = document.createElement('div');
     messageBubble.classList.add('message-bubble');
 
-    let rendered = marked.parse(rawText); // рендеринг Markdown
+    let rendered = marked.parse(rawText); // рендеринг Markdown с переносами строк включенными
 
     if (sender === 'bot-command') {
       messageBubble.innerHTML = `
@@ -73,9 +76,9 @@ document.addEventListener('DOMContentLoaded', () => {
    */
   async function processMessage(message) {
     // Ищем команды с помощью регулярных выражений
-    const terminalMatch = message.match(/^terminal\((.+)\)$/);
-    const viewFileMatch = message.match(/^view_file\((.+)\)$/);
-    const editFileMatch = message.match(/^edit_file\((.+)\)$/);
+    const terminalMatch = message.match(/^terminal(.+)$/);
+    const viewFileMatch = message.match(/^view_file(.+)$/);
+    const editFileMatch = message.match(/^edit_file(.+)$/);
 
     if (terminalMatch) {
       const cmd = terminalMatch[1];
@@ -91,8 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.error) {
           appendMessage('bot', `**Ошибка:** ${data.error}`);
         } else {
-          // Не отображаем промежуточное сообщение пользователю.
-          // Вместо этого передаём результат выполнения в модель для генерации финального ответа.
+          // Передаем результат выполнения команды в модель для генерации финального ответа
           streamChatResponse(`Команда была выполнена! Содержимое:\n\`\`\`\n${data.result}\n\`\`\``);
         }
       } catch (err) {
@@ -123,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const filePath = editFileMatch[1];
       appendMessage('bot-command', `edit_file ${filePath}`);
 
-      // Здесь можно расширить синтаксис для извлечения нового содержимого.
+      // Пример нового содержимого для редактирования
       const newContent = "Новый контент файла, записанный через edit_file().";
 
       try {
@@ -154,10 +156,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /**
    * Потоковая генерация ответа от модели.
-   * Создаёт новый bot-bubble и постепенно дописывает текст.
+   * Создает новый bot-bubble и постепенно дописывает текст.
    */
   function streamChatResponse(messageText) {
-    // Создаём пустой bot-bubble
+    // Создаем пустой bot-bubble
     const botBubble = appendMessage('bot', '');
     fetch('/process_stream', {
       method: 'POST',

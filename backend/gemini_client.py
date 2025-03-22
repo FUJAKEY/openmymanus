@@ -3,7 +3,7 @@ from google import genai
 from google.genai import types
 
 API_KEY = os.environ.get('GEMINI_API_KEY', 'DEMO_KEY')
-client = genai.Client(api_key=API_KEY)
+client = genai.Client(api_key="AIzaSyBfnmzemsffBdGoDVFOkSMfwdY9EFxi4EA")
 
 chat = None
 

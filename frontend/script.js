@@ -61,14 +61,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function processMessage(message) {
-    // Ищем команды
+    // Проверяем, является ли сообщение специальной командой
     const terminalMatch = message.match(/^terminal(.+)$/);
     const viewFileMatch = message.match(/^view_file(.+)$/);
     const editFileMatch = message.match(/^edit_file(.+)$/);
 
     if (terminalMatch) {
       const cmd = terminalMatch[1];
-      // Не показываем промежуточный bubble пользователю.
+      // Не создаём промежуточное сообщение для пользователя
       try {
         const res = await fetch('/execute', {
           method: 'POST',
@@ -79,8 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.error) {
           appendMessage('bot', `**Ошибка:** ${data.error}`);
         } else {
-          // Отправляем результат выполнения команды в модель,
-          // но не отображаем это сообщение напрямую пользователю.
+          // Передаём результат выполнения команды в модель,
+          // но промежуточное сообщение не показываем пользователю.
           streamChatResponse(`Команда была выполнена! Содержимое:\n\`\`\`\n${data.result}\n\`\`\``);
         }
       } catch (err) {
@@ -105,7 +105,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else if (editFileMatch) {
       const filePath = editFileMatch[1];
-      // Пример нового содержимого для редактирования
       const newContent = "Новый контент файла, записанный через edit_file().";
       try {
         const res = await fetch('/execute', {
@@ -127,11 +126,13 @@ document.addEventListener('DOMContentLoaded', () => {
         appendMessage('bot', `Ошибка при выполнении edit_file: ${err}`);
       }
     } else {
+      // Если сообщение не является специальной командой – запускаем потоковую генерацию
       streamChatResponse(message);
     }
   }
 
   function streamChatResponse(messageText) {
+    // Создаем пустой bot-bubble для генерации ответа модели
     const botBubble = appendMessage('bot', '');
     fetch('/process_stream', {
       method: 'POST',
@@ -150,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (done) return;
           const chunkText = new TextDecoder('utf-8').decode(value);
           accumulated += chunkText;
+          // Обновляем содержимое botBubble с генерацией ответа от модели
           botBubble.querySelector('.message-text').innerHTML = marked.parse(accumulated);
           chatContent.scrollTop = chatContent.scrollHeight;
           readChunk();
